@@ -1,0 +1,88 @@
+import requests
+import pandas as pd
+
+# Configurações do Microsoft Graph
+TENANT_ID = "7318121b-7133-44bd-9bb4-9102ebde0d39"
+CLIENT_ID = "4c4b3566-0455-45c0-ada0-9b5eb450b4d7"
+CLIENT_SECRET = "gKi8Q~m4apkEeVlRrmEXUntBd5CuTHCm30HQ.a4L"
+
+# URLs da API
+TOKEN_URL = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+GROUP_EMAIL = "grupoconselhodeadministracao@abbc.org.br"
+GROUPS_URL = f"https://graph.microsoft.com/v1.0/groups?$filter=mail eq '{GROUP_EMAIL}'"
+MEMBERS_URL_TEMPLATE = "https://graph.microsoft.com/v1.0/groups/{group_id}/members"
+
+# Obtendo o Token de Acesso
+token_data = {
+    "grant_type": "client_credentials",
+    "client_id": CLIENT_ID,
+    "client_secret": CLIENT_SECRET,
+    "scope": "https://graph.microsoft.com/.default"
+}
+
+token_response = requests.post(TOKEN_URL, data=token_data)
+access_token = token_response.json().get("access_token")
+
+# Verificar se o token foi obtido com sucesso
+if not access_token:
+    print("❌ Erro ao obter o token de acesso.")
+    exit()
+
+print("✅ Token de acesso obtido com sucesso.")
+
+# Cabeçalhos da API
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json"
+}
+
+# Obter o ID do grupo
+group_response = requests.get(GROUPS_URL, headers=headers)
+group_data = group_response.json()
+group_id = group_data['value'][0]['id'] if group_data['value'] else None
+
+if not group_id:
+    print("❌ Grupo não encontrado.")
+    exit()
+
+# Coletando a lista de participantes (implementando paginação)
+participants = []
+next_link = MEMBERS_URL_TEMPLATE.format(group_id=group_id)
+
+while next_link:
+    response = requests.get(next_link, headers=headers)
+    response_data = response.json()
+    participants.extend(response_data.get("value", []))
+    next_link = response_data.get("@odata.nextLink")
+
+# Verificar se participantes foram coletados
+if not participants:
+    print("❌ Nenhum participante encontrado.")
+    exit()
+else:
+    print(f"✅ {len(participants)} participantes encontrados.")
+
+# Criando uma lista para armazenar os dados
+data = []
+
+# Coletando informações de cada participante
+for participant in participants:
+    participant_id = participant.get("id")
+    display_name = participant.get("displayName")
+    email = participant.get("mail", "N/A")
+
+    # Adiciona ao dataset
+    data.append({
+        "ID Participante": participant_id,
+        "Nome": display_name,
+        "Email": email
+    })
+
+    # Print para verificar dados coletados de cada participante
+    print(f"Participante: {display_name}, Email: {email}")
+
+# Criar um DataFrame e exportar para Excel na pasta c:\temp
+df = pd.DataFrame(data)
+df.to_excel(r"C:\temp\Relatorio_Participantes.xlsx", index=False)
+
+print("✅ Relatório exportado com sucesso como C:\\temp\\Relatorio_Participantes.xlsx!")
